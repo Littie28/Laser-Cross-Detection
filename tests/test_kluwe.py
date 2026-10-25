@@ -35,6 +35,18 @@ def angle_diff_mod_pi(a: float, b: float) -> float:
     return np.abs(np.angle(z1 * np.conj(z2))) / 2.0
 
 
+def matched_angle_diffs(prediction: NDArray, expected: NDArray) -> tuple[float, float]:
+    """Angle differences in radians for the better of both pairings.
+
+    Sorting is not sufficient because angles close to 0 and 180 degrees are
+    neighbors modulo 180 degrees but end up on opposite ends after sorting.
+    """
+    pred, exp = np.deg2rad(prediction), np.deg2rad(expected)
+    direct = (angle_diff_mod_pi(pred[0], exp[0]), angle_diff_mod_pi(pred[1], exp[1]))
+    swapped = (angle_diff_mod_pi(pred[0], exp[1]), angle_diff_mod_pi(pred[1], exp[0]))
+    return min(direct, swapped, key=max)
+
+
 @dataclass
 class GeneratedTestCase:
     config: ImageConfig
@@ -129,7 +141,28 @@ class TestDetectionMethodKluwe:
         detector = Kluwe()
         prediction = detector(test_case.image)
         distance = np.linalg.norm(prediction - test_case.expected_intersection)
-        assert_allclose(distance, 0.0, atol=2.0)  # absolute difference in pixel
+        # a small angle error is amplified by 1 / sin(intersection angle)
+        intersection_angle = np.deg2rad(
+            abs(test_case.raw_angles[0] - test_case.raw_angles[1])
+        )
+        atol = max(2.0, 1.0 / abs(np.sin(intersection_angle)))  # in pixel
+        assert_allclose(distance, 0.0, atol=atol)
+
+    def test_image_flat_loss_regression(self):
+        """Rotation must not crop the beams, else the angle optimum is ambiguous."""
+        config = ImageConfig(
+            dimension=ImageDimension(height=375, width=250),
+            beams=[
+                BeamConfig(angle=0.0, rho=59.0, width=3.0, intensity=1.0),
+                BeamConfig(angle=20.0, rho=1e-8, width=3.0, intensity=1.0),
+            ],
+            noise=NoiseConfig.none(),
+            dtype="uint8",
+            seed=0,
+        )
+        image = SyntheticImageGenerator(config).generate()
+        angles = np.sort(Kluwe().calc_angles(image, method="Powell") % 180.0)
+        assert_allclose(angles, (70.0, 90.0), atol=0.05)
 
     @settings(deadline=2000)
     @given(beam_image_noise_free().filter(is_intersection_inside_image))
@@ -138,14 +171,9 @@ class TestDetectionMethodKluwe:
         detector = Kluwe()
         guess, properties = detector.guess_angles(test_case.image)
         guess = guess[np.argsort(properties["prominences"])[-2:]]
-        prediction = np.sort(guess % 180.0)
+        prediction = guess % 180.0
 
-        diff1 = angle_diff_mod_pi(
-            np.deg2rad(prediction[0]), np.deg2rad(test_case.expected_angles[0])
-        )
-        diff2 = angle_diff_mod_pi(
-            np.deg2rad(prediction[1]), np.deg2rad(test_case.expected_angles[1])
-        )
+        diff1, diff2 = matched_angle_diffs(prediction, test_case.expected_angles)
         # absolute tolerance of 2 degree
         assert_allclose(
             (diff1, diff2),
@@ -159,14 +187,9 @@ class TestDetectionMethodKluwe:
         """Test if the calculated angles are accurate."""
         detector = Kluwe()
         angles = detector.calc_angles(test_case.image, method="Powell")
-        prediction = np.sort(angles % 180.0)
+        prediction = angles % 180.0
 
-        diff1 = angle_diff_mod_pi(
-            np.deg2rad(prediction[0]), np.deg2rad(test_case.expected_angles[0])
-        )
-        diff2 = angle_diff_mod_pi(
-            np.deg2rad(prediction[1]), np.deg2rad(test_case.expected_angles[1])
-        )
+        diff1, diff2 = matched_angle_diffs(prediction, test_case.expected_angles)
         # absolute tolerance of 1 degree
         assert_allclose(
             (diff1, diff2),

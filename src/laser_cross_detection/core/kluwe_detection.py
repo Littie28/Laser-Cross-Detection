@@ -142,6 +142,7 @@ class Kluwe(DetectionMethodABC):
                 f"Could not estimate exactly 2 angles! Found {len(guess)}. "
                 "Review the input image and consider preprocessing."
             )
+        arr = pad_to_diagonal(arr)
         if method in [
             "Nelder-Mead",
             "Powell",
@@ -341,7 +342,7 @@ class Kluwe(DetectionMethodABC):
             tuple[float, float]: estimation of the angles of the two beams in
                 degrees
         """
-        angles, accumulator = self.calc_angle_space(arr)
+        angles, accumulator = self.calc_angle_space(pad_to_diagonal(arr))
         accumulator = accumulator**2
         projection = np.max(accumulator, axis=1)
         projection_wrapped = np.tile(projection, 3)
@@ -354,6 +355,25 @@ class Kluwe(DetectionMethodABC):
             properties[key] = properties[key][mask]
 
         return angles[peaks], properties
+
+
+def pad_to_diagonal(im: NDArray) -> NDArray:
+    """Zero-pads an image symmetrically to a square covering its diagonal so
+    that rotating it by any angle does not crop the beams.
+
+    Args:
+        im (NDArray): image to pad
+
+    Returns:
+        NDArray: padded image with the original content centered
+    """
+    height, width = im.shape
+    diagonal = ceil(sqrt(height**2 + width**2))
+    pad_h, pad_w = diagonal - height, diagonal - width
+    return np.pad(
+        im,
+        ((pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2)),
+    )
 
 
 def optimization_loss_function(angle: NDArray[np.floating], im: NDArray) -> float:
