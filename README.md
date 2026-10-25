@@ -49,7 +49,7 @@ To make use of the detections a calibration module `laser_cross_detection.calibr
 
 ## Installation
 ### Requirements
-- Python >=3.10
+- Python >=3.11
 - [`uv`](https://docs.astral.sh/uv/) package manager
 
 ### Direct Git Install
