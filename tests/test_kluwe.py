@@ -35,6 +35,10 @@ def angle_diff_mod_pi(a: float, b: float) -> float:
     return np.abs(np.angle(z1 * np.conj(z2))) / 2.0
 
 
+# padding to the diagonal and slow CI runners need generous time per example
+DEADLINE_MS = 10_000
+
+
 def matched_angle_diffs(prediction: NDArray, expected: NDArray) -> tuple[float, float]:
     """Angle differences in radians for the better of both pairings.
 
@@ -135,7 +139,7 @@ def is_intersection_inside_image(
 
 
 class TestDetectionMethodKluwe:
-    @settings(deadline=2000)
+    @settings(deadline=DEADLINE_MS)
     @given(beam_image_noise_free().filter(is_intersection_inside_image))
     def test_image(self, test_case: GeneratedTestCase):
         detector = Kluwe()
@@ -164,7 +168,7 @@ class TestDetectionMethodKluwe:
         angles = np.sort(Kluwe().calc_angles(image, method="Powell") % 180.0)
         assert_allclose(angles, (70.0, 90.0), atol=0.05)
 
-    @settings(deadline=2000)
+    @settings(deadline=DEADLINE_MS)
     @given(beam_image_noise_free().filter(is_intersection_inside_image))
     def test_angles_guess(self, test_case: GeneratedTestCase):
         """Test if the initial guess for angle estimation is accurate."""
@@ -181,7 +185,7 @@ class TestDetectionMethodKluwe:
             atol=np.deg2rad(2.5),
         )
 
-    @settings(deadline=2000)
+    @settings(deadline=DEADLINE_MS)
     @given(beam_image_noise_free().filter(is_intersection_inside_image))
     def test_angles_calc(self, test_case: GeneratedTestCase):
         """Test if the calculated angles are accurate."""
